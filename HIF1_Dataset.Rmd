@@ -1,0 +1,136 @@
+---
+title: "HIF-1 Dataset"
+author: "Rongo Lab"
+date: "2/27/2022"
+output:
+  pdf_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Reading Count Data into R and Omit NA
+
+Determine count data file path.Read data from .csv file and store into *rawdataCR*. Data is of type data frame.
+
+Remove all NA values from data frame. Label data frame columns.
+
+```{r Reading Count Data, echo=TRUE}
+path <- file.path("~","desktop","GeneCounts_HIF1_Dataset.csv")
+rawdataCR <- read.csv(path,stringsAsFactors = FALSE,header = TRUE)
+ctdataCR <- na.omit(rawdataCR)
+```
+
+Load EdgeR.
+
+Label data frame columns (N2cgc_1, N2cgc_2, N2cgc_3, N2cgc_4, egl9_B, egl9_C, egl9_H, egl9_I, hif1_B, hif1_C, hif1_H, hif1_I, egl9hif1_B, egl9hif1_C, egl9hif1_H, egl9hif1_I).
+
+Check data frame column labels by examining top six rows.
+
+```{r}
+group <- c("WBID","N2cgc_1","N2cgc_2","N2cgc_3","N2cgc_4","egl9_B","egl9_C", "egl9_H", "egl9_I", "hif1_B",	"hif1_C",	"hif1_H",	"hif1_I",	"egl9hif1_B",	"egl9hif1_C",	"egl9hif1_H",	"egl9hif1_I")
+colnames(ctdataCR) <- group
+head(ctdataCR)
+
+```
+
+The EdgeR package stores the data in a list object called *DGEList*.
+
+Name data set groups and create list object. This is *lstC*.
+
+This list can be treated like a list or subsetted like a matrix.
+
+Subset DGEList object passing only read counts from the data frame *rawdataCR*. This is *lstC*.
+
+The Worm Base gene identifier is the first column of the data frame *rawdataCR*. The **genes** element in DGEList is the Worm Base gene identifier used in the data frame *rawdataCR*.
+
+Examine first six rows of data set in list object and check dimensions of *lstC*. Output is: 47096 rows and 16 columns.
+
+```{r}
+group <- c("N2cgc_1","N2cgc_2","N2cgc_3","N2cgc_4","egl9_B","egl9_C", "egl9_H", "egl9_I", "hif1_B",	"hif1_C",	"hif1_H",	"hif1_I",	"egl9hif1_B",	"egl9hif1_C",	"egl9hif1_H",	"egl9hif1_I")
+lstC<-DGEList(genes=ctdataCR[,1],counts = ctdataCR[,2:17],group = group)
+head(lstC)
+dim(lstC)
+```
+
+## Filtering: Removing low read counts
+
+Genes that have a low count have to be removed. This makes sense biologically because a gene has to have a minimal count to be translated or to have any biological significance. Statistically, a gene has to have a minimal count to provide sufficient evidence that a gene is differentially expressed.
+
+Filtering is based on counts per million (CPM) to avoid favoring of genes that are expressed in large libraries over those expressed in smaller libraries. The cpm values are *lstCPM*.
+
+```{r}
+lstCPM <- cpm(lstC)
+```
+
+Here we keep counts that are greater than or equal to 0.5 CPM. The counts that are greater than 0.5 are *thresh*.
+
+This cut-off of 0.5 is equal to 10/*L* where *L* is the minimum library size that is considered acceptable (*L* =20 million in this data analysis).
+
+Examining the first six rows of *thresh* shows a logical matrix of TRUEs and FALSEs.
+
+```{r}
+thresh <- lstCPM > 0.5
+head(thresh)
+```
+
+Find total number of TRUE values in each row of the matrix
+
+```{r}
+table(rowSums(thresh))
+```
+
+Keep genes with CPM values that are greater than 0.5 in at least 4 libraries since there are 4 replicates per group. Keep genes that have at least 4 TRUEs in each row of thresh.
+
+```{r}
+lstCPM.keep <- rowSums(thresh)>=4
+#summary(keep)
+```
+
+Subset rows of count data in *lstC* to keep genes that are highly expressed.
+
+```{r}
+lstC.keep <- lstC[lstCPM.keep, ]
+dim(lstC)
+```
+
+```{r}
+dim(lstC.keep)
+```
+
+Recompute the library sizes of the highly expressed genes data set
+
+```{r}
+lstC.keep$samples$lib.size <- colSums(lstC.keep$counts)
+```
+
+Apply TMM normalization to the data set to account for compositional differences between the libraries.
+
+```{r}
+lstC.keep <- calcNormFactors(lstC.keep)
+head(lstC.keep$samples)
+tail(lstC.keep$samples)
+```
+
+##Examine Data
+
+Plot a multidimensional scaling analysis to examine data for outliers and/or any relationships in the data.
+
+```{r}
+mds <- plotMDS.DGEList(lstC.keep, xlab ="Dimension 1",ylab ="Dimension 2",asp = 1,cex = 0.8,col=c(rep("blue",4),rep("darkgreen",4),rep("red",4),rep("black",4)))
+plot(mds,xlab ="Dimension 1",ylab ="Dimension 2",asp = 6/9,cex = 0.8,col=c(rep("blue",4),rep("darkgreen",4),rep("red",4),rep("black",4)))
+
+
+```
+
+```{r}
+plotMDS.DGEList(lstC.keep, xlim = c(-3,3), ylim = c(-2,2))
+```
+
+```{r pressure, echo=FALSE}
+#plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
